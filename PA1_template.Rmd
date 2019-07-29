@@ -1,25 +1,133 @@
 ---
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
+title: "Reproducible research - peer graded W2 assignment"
+output: github_document
 ---
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
 
-## Loading and preprocessing the data
+# 1. Reading in the dataset and preparing the data
+```{r}
+library("data.table")
+```
 
+```{r}
+zip_url <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip"
+temp <- tempfile()
+download.file(zip_url,temp)
+activity_ds <- read.csv(unz(temp, "activity.csv"))
+activity_ds <- setDT(activity_ds)
+```
+# 2. Histogram of the total number of steps taken each day
+## 2.1 Calculating the total number of steps taken per day
+```{r}
+total_num_of_steps <- activity_ds[,.(sum_of_steps = sum(steps)),date]
+total_num_of_steps
+```
 
+## 2.2 Building histogram of the total number of steps taken each day
+```{r}
+hist(total_num_of_steps$sum_of_steps, 
+     main = "Distribution of total number of steps per day",
+     xlab = "Total number of steps")
+```
 
-## What is mean total number of steps taken per day?
+# 3. Calculating the mean and median of the total number of steps taken per day
+```{r}
+mean_and_median_num_of_steps <- activity_ds[,.(mean_of_steps = mean(steps), median_of_steps = median(steps)),date]
+mean_and_median_num_of_steps
 
+mean_steps_across_all_days <- mean(total_num_of_steps$sum_of_steps,na.rm = TRUE)
+mean_steps_across_all_days # 10766.19
 
+median_steps_across_all_days <- median(total_num_of_steps$sum_of_steps,na.rm = TRUE)
+median_steps_across_all_days # 10765
+```
 
-## What is the average daily activity pattern?
+# 4. Time series plot of the average number of steps taken
+```{r}
+mean_of_steps_across_intervals <- 
+  activity_ds[,.(mean_of_steps = mean(steps,na.rm = TRUE)), interval]
 
+plot(mean_of_steps_across_intervals$interval,
+     mean_of_steps_across_intervals$mean_of_steps, type = "l",
+     main = "Average number of steps taken",
+     xlab = "Interval", ylab = "Mean of steps")
+```
 
+# 5. Determining the 5-minute interval that, on average, contains the maximum number of steps
+```{r}
+mean_of_steps_across_intervals[which.max(mean_of_steps_across_intervals$mean_of_steps)]
+```
 
-## Imputing missing values
+# 6. Code to describe and show a strategy for imputing missing data
+## 6.1 Number of missing values in the dataset
+```{r}
+sum(is.na(activity_ds$steps))
+```
 
+## 6.2 Imputting missing values by 5 min interval mean values
+```{r}
+merged_activity_ds <- merge(activity_ds, mean_of_steps_across_intervals,
+                            all.x = TRUE,
+                            by.x = "interval",
+                            by.y = "interval")
 
+merged_activity_ds[,steps := ifelse(is.na(steps),mean_of_steps,steps)]
+```
 
-## Are there differences in activity patterns between weekdays and weekends?
+## 6.3 Creating a new dataset that is equal to the original dataset but with the missing data filled in.
+```{r}
+activity_ds_filled <- merged_activity_ds[,c("steps", "date", "interval")]
+```
+
+## 6.4 Making a histogram on imputted data
+```{r}
+total_num_of_steps_filled <- activity_ds_filled[,.(sum_of_steps = sum(steps)),date]
+```
+
+# 7. Building histogram of the total number of steps taken each day after missing values are imputed
+```{r}
+hist(total_num_of_steps_filled$sum_of_steps, 
+     main = "Distribution of total number of steps per day (NA removed)",
+     xlab = "Total number of steps")
+
+mean_steps_across_all_days_noNA <- mean(total_num_of_steps_filled$sum_of_steps,na.rm = TRUE)
+mean_steps_across_all_days_noNA # 10766.19
+
+median_steps_across_all_days_noNA <- median(total_num_of_steps_filled$sum_of_steps,na.rm = TRUE)
+median_steps_across_all_days_noNA # 10766.19
+```
+
+As we see, median recalculated on inputted data is higher +1.19 steps comparing with original noninputted data. Mean stays the same.
+
+# 8. Panel plot comparing the average number of steps taken per 5-minute interval across weekdays and weekends
+## 8.1 Creating weekday/weekend var
+```{r}
+activity_ds_filled[,day_of_week := ifelse(
+  weekdays(as.Date(date)) == "Saturday" | weekdays(as.Date(date)) == "Sunday", "weekend", "weekday")]
+
+table(activity_ds_filled$day_of_week)
+```
+
+## 8.2 Creating panel plots
+```{r}
+mean_of_steps_weekday <- 
+  activity_ds_filled[day_of_week == "weekday",.(mean_of_steps = mean(steps)), interval]
+
+mean_of_steps_weekend <- 
+  activity_ds_filled[day_of_week == "weekend",.(mean_of_steps = mean(steps)), interval]
+
+par(mfrow=c(2,1))
+
+plot(mean_of_steps_weekday$interval,
+     mean_of_steps_weekday$mean_of_steps, type = "l",
+     xlab = "interval", ylab = "steps on average")
+
+plot(mean_of_steps_weekend$interval,
+     mean_of_steps_weekend$mean_of_steps, type = "l",
+     xlab = "interval", ylab = "steps on average")
+```
+
+As we could see, activity during weekends starts more later than in working days, and is a bit more intensive during the whole weekend days and evenings.
